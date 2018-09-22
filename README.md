@@ -2,7 +2,7 @@ Show Next Font Components
 ==============
 
 This plugin shows in a light orange colour the list of components used in the glyph of the next font and in gray colour the list of current font components.
-If anchors names and quantity matches between fonts it display the word "OK" in green.
+If component names and quantity matches between fonts it display the word "OK" in green.
 
 ### How to use:
 Open two fonts and activate the plugin via **View>Show Next Font Components** menu item.
