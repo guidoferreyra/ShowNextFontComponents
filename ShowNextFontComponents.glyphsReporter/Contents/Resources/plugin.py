@@ -1,78 +1,122 @@
+#!/usr/bin/env python
 # encoding: utf-8
+from __future__ import division, print_function, unicode_literals
 
-###########################################################################################################
-#
-#
-#	Reporter Plugin
-#
-#	Read the docs:
-#	https://github.com/schriftgestalt/GlyphsSDK/tree/master/Python%20Templates/Reporter
-#
-#
-###########################################################################################################
-
-
+import objc
+from GlyphsApp import *
 from GlyphsApp.plugins import *
-import math
+from math import radians, tan
 
-class NextFontComponents(ReporterPlugin):
-
-
-
-	def checkComponents(self, layer):
+class showNextFontComponents(ReporterPlugin):
 	
-		thisFont = layer.parent.parent 
-		thisGlyph = layer.parent
-		nextFont = Glyphs.fonts[1]
-
-		activeMasterIndex = thisFont.masters.index(thisFont.selectedFontMaster)
-
-		initPos = thisFont.selectedFontMaster.descender
-		step = + 20		
-		xHeight = thisFont.selectedFontMaster.xHeight
-		angle = thisFont.selectedFontMaster.italicAngle
-		offset = math.tan(math.radians(angle)) * xHeight/2
-
-		fontColor1 = NSColor.colorWithCalibratedRed_green_blue_alpha_( 0.91, 0.32, 0.06, 0.45 )
-		fontColor2 = NSColor.colorWithCalibratedRed_green_blue_alpha_( 0, 0, 0, 0.45 )
-		fontColor3 = NSColor.colorWithCalibratedRed_green_blue_alpha_( 0.0, 0.5, 0.3, 0.8 )
-		
-		thisComp = []
-		nextComp = []
-
-
-		if len(thisFont.masters) != len(nextFont.masters):
-			nextLayer = nextFont.glyphs[thisGlyph.name].layers[0]
-		else:
-			nextLayer = nextFont.glyphs[thisGlyph.name].layers[activeMasterIndex]
-
-		for nextLayerComp in nextLayer.components:
-			thisComp.append(nextLayerComp.componentName)
-			self.drawTextAtPoint( u"· %s" % nextLayerComp.componentName, NSPoint(10 - offset, initPos), 14.0, fontColor1 )
-			initPos = initPos + step
-
-		for thisLayerComp in layer.components:
-			nextComp.append(thisLayerComp.componentName)
-			self.drawTextAtPoint( u"· %s" % thisLayerComp.componentName, NSPoint(10 - offset, initPos), 14.0, fontColor2 )
-			initPos = initPos + step
-
-		#Hago sets de las listas
-		font1Set = set(thisComp)
-		font2Set = set(nextComp)
-		
-		#Hace sets con las difrencias
-		diff1 = font1Set.difference(font2Set)
-		diff2 = font2Set.difference(font1Set)
-
-		if not diff1 and not diff2:
-			self.drawTextAtPoint( u"OK", NSPoint(10 - offset, initPos), 14.0, fontColor3 )
-
+	@objc.python_method
 	def settings(self):
-		self.menuName = Glyphs.localize({'en': u'Next Font Components', 'de': u'Next Font Components'})
+		self.menuName = Glyphs.localize({
+			'en': 'Next Font Components',
+			'de': 'Komponenten der nächsten Schrift',
+			'fr': 'les Composants de la police suivante',
+			'es': 'componentes de la siguiente fuente',
+			'pt': 'componentes da próxima fonte',
+			})
 		
-	def foreground(self, layer):
-		self.checkComponents ( layer )
+		self.missingComponents=None
 
+	@objc.python_method
+	def background( self, Layer ):
+		try:
+			if len(Glyphs.fonts) > 1:
+				NSColor.colorWithCalibratedRed_green_blue_alpha_( 0.0, 0.5, 0.3, 0.5 ).set()
+				self.checkComponents( Layer )
+		except Exception as e:
+			print(e)
+			print()
+			import traceback
+			print(traceback.format_exc())
+	
+	@objc.python_method
+	def checkComponents ( self, Layer ):
+		thisGlyph = Layer.parent
+		thisFont = thisGlyph.parent
+		thisMaster = Layer.master
+		masters = thisFont.masters
+		
+		nextFont = Glyphs.fonts[1]
+		nextFontMasters = nextFont.masters
+		nextGlyph = nextFont.glyphs[thisGlyph.name]
+		if not nextGlyph and "." in thisGlyph.name:
+			dotOffset = thisGlyph.name.find(".")
+			coreGlyphName = thisGlyph.name[:dotOffset]
+			nextGlyph = nextFont.glyphs[coreGlyphName]
+		
+		if not nextGlyph:
+			self.missingComponents = None
+		else:
+			activeMasterIndex = masters.index(thisMaster)
+		
+			if len(masters) != len(nextFontMasters):
+				nextLayer = nextGlyph.layers[0]
+			else:
+				nextLayer = nextGlyph.layers[activeMasterIndex]
+		
+			orange = NSColor.orangeColor().colorWithAlphaComponent_(0.67)
+			grey = NSColor.grayColor().colorWithAlphaComponent_(0.9)
+		
+			#Hago sets de las listas
+			nextFontComponentsSet = set([a.name for a in nextLayer.components])
+			thisFontComponentsSet = set([a.name for a in Layer.components])
 
-	#def preview(self, layer):
+			#Hace sets con las difrencias
+			missingInNextFont = thisFontComponentsSet.difference(nextFontComponentsSet)
+			missingInThisFont = nextFontComponentsSet.difference(thisFontComponentsSet)
 
+			componentsNamesMissingInThisFont = "\n".join(["+ %s "%name for name in missingInThisFont])
+			self.drawTextAtPoint( componentsNamesMissingInThisFont, NSPoint(0,0), fontSize=10.0, fontColor=orange, align="bottomright" )
+			
+			componentsNamesMissingInNextFont = "\n".join(["− %s"%name for name in missingInNextFont])
+			self.drawTextAtPoint( componentsNamesMissingInNextFont, NSPoint(0,0), fontSize=10.0, fontColor=grey, align="bottomleft" )
+			
+			print (componentsNamesMissingInNextFont)
+			self.missingComponents = missingInThisFont
+			
+	
+	@objc.python_method
+	def conditionalContextMenus(self):
+		# Execute only if layers are actually selected
+		if not self.missingComponents or len(Glyphs.font.selectedLayers)!=1:
+			return []
+		else:
+			# Add context menu item
+			contextMenus = [{
+				'name': Glyphs.localize({
+					'en': 'Add missing components from next font',
+					'de': 'Fehlende Komponenten aus der nächsten Schrift hinzufügen',
+					'fr': 'Ajouter les Composants manquantes de la police suivante',
+					'es': 'Agregar componentes faltantes de la próxima fuente',
+					'pt': 'Adicionar componentes ausentes da próxima fuente',
+					}), 
+				'action': self.addMissingComponents_
+				}]
+
+			# Return list of context menu items
+			return contextMenus
+	
+	def addMissingComponents_(self, sender=None):
+		pass
+		if self.missingComponents:
+			currentLayer = Glyphs.font.selectedLayers[0]
+			if currentLayer:
+				currentLayer.clearSelection()
+				for i, componentName in enumerate(self.missingComponents):
+					newComponent = GSComponent(componentName)					
+					try:
+						# Glyphs 3
+						currentLayer.shapes.append(newComponent)
+					except:
+						# Glyphs 2
+						currentLayer.components.append(newComponent)
+					currentLayer.selection.append(newComponent)
+	
+	@objc.python_method
+	def __file__(self):
+		"""Please leave this method unchanged"""
+		return __file__
